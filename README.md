@@ -223,6 +223,17 @@ or misuse.
 
 ---
 
+## Status (August 2026)
+
+**Farming is stopped.** Cloudflare Turnstile now enforces a *managed* challenge after
+~2 accounts per IP, which browser headless clients (including Camofox/Playwright stealth)
+cannot auto-solve once the IP is flagged. The script remains functional for the
+`test` and `monitor` commands against the 5 accounts farmed earlier (15 free API routes).
+New account creation is blocked pending either a fresh residential IP per session or a
+Turnstile-solving workaround. See [docs/STATUS.md](docs/STATUS.md).
+
+---
+
 ## License
 
 [MIT](LICENSE) © 2026 Hafizh Muzani
