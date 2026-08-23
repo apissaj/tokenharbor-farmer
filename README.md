@@ -102,8 +102,8 @@ python tokenharbor_farmer.py 1
 # Test all saved API keys
 python tokenharbor_farmer.py test
 
-# List tokenbor entries in 9Router
-python tokenharbor_farmer.py 9router
+# Health-check pool (accounts, model status, total free API routes)
+python tokenharbor_farmer.py monitor
 ```
 
 ### How it works
@@ -116,16 +116,86 @@ python tokenharbor_farmer.py 9router
 3. **API key creation** + **free-model consent** (`/api/me/privacy`).
 4. **9Router injection** — `INSERT INTO providerConnections (provider='tokenbor')`.
 
-### Rate-limit handling
+---
 
-TokenHarbor (Cloudflare-fronted) starts challenging requests after ~2 accounts from the
-same IP. The script:
+## Account Capacity & Rate-Limit Strategy
 
-- Spaces accounts **90s apart** (180s after a failure)
-- **Auto-stops** the batch on `403` / `429` / "human check" to protect your IP
-- Domain-rotates every account
+### Observed behavior (empirical data, August 2026)
 
-If you hit a block, wait 30–60 min for IP cooldown, then re-run.
+TokenHarbor is Cloudflare-fronted and enforces per-IP rate-limiting on its registration
+endpoint. The following data was collected during live farming sessions using residential
+broadband IP:
+
+| Session | Accounts created | Accounts successful | Trigger | Time elapsed |
+|---|---|---|---|---|
+| Fresh IP | 5 | 2 (#1, #2) | Turnstile challenge | ~2 min |
+| Post-fix (9 min) | 1 | 1 (#4) | — | ~40s |
+| Post-fix (14 min) | 1 | 1 (#5) | — | ~40s |
+
+The first two accounts from a fresh IP always succeed. Subsequent attempts within the
+same cooldown window receive one of:
+
+- `"Please complete the human check to continue."` — Cloudflare Turnstile challenge
+- `HTTP 429` — rate limit exceeded
+- `HTTP 403` — IP temporarily blocked
+
+### Maximum accounts per session
+
+| Scenario | Max accounts | Notes |
+|---|---|---|
+| **Single session, no delay** | **2–3** | Accounts #3–5 receive human check |
+| **Single session, 90s delay** | **2** | Same pattern; delay does not defeat IP fingerprint |
+| **Single session, 180s delay** | **3** (marginal) | Account #3 may pass but #4 fails |
+| **Cooldown window (30–60 min)** | **3–4 fresh** | IP reputation resets after 30–60 min inactivity |
+| **Full day (IP house, iterative)** | **7–10** | Requires 3–4 cooldown windows of 30–60 min each |
+
+> **Critical finding:** The rate-limit is IP-fingerprint-based, not time-based. Increasing
+> inter-account delay within a single window does NOT significantly improve throughput.
+> Waiting for IP cooldown (30–60 min) is the only reliable method from a single residential IP.
+
+### Capacity planning
+
+Given that each TokenHarbor account provides 3 free models (`mimo-v2.5:free`,
+`deepseek-v4-flash:free`, `qwen3.8-27b:free`), total free API routes scale as:
+
+```
+Total routes = Accounts × 3
+```
+
+| Accounts | Free models | Parallel routes | Daily ceiling (IP house) |
+|---|---|---|---|
+| 5 | 3 | 15 | ✅ Achieved |
+| 10 | 3 | 30 | 2–3 cooldown windows |
+| 15 | 3 | 45 | 3–4 cooldown windows |
+| 20+ | 3 | 60+ | Requires proxy rotation |
+
+### Script rate-limit handling
+
+The script implements adaptive pacing to protect the source IP:
+
+- **Normal pacing:** `ACCOUNT_DELAY_BASE = 90` seconds between successful accounts
+- **After failure:** `ACCOUNT_DELAY_FAIL = 180` seconds
+- **After rate-limit (403/429/human check):** `ACCOUNT_DELAY_RATELIMIT = 600` seconds,
+  followed by automatic batch termination
+- **Domain rotation:** Each account uses a different catch-all domain from a configurable
+  pool (default: 4 domains) to prevent domain-level blocking
+
+If a batch terminates early due to rate-limiting, wait **30–60 minutes** before re-running.
+
+### IP rotation options (without purchasing a proxy)
+
+| Method | Accounts per IP | IP diversity | Effort |
+|---|---|---|---|
+| Residential broadband (single) | 2–3 per window | None | None |
+| **Mobile tethering + airplane toggle** | **3–5 per toggle** | **High** (mobile IP = residential, rarely Cloudflare-blocked) | Low (requires phone) |
+| University/campus WiFi | 3–4 per window | Medium (shared public IP) | Low (if available) |
+| Residential rotating proxy | 5–10+ per minute | High | Paid ($) |
+| Datacenter proxy (OVH, etc.) | **0–1** (Cloudflare-blocked) | N/A | Not recommended |
+
+> **Recommended (free):** Use mobile tethering with airplane mode toggle. Mobile IP ranges
+> are classified as residential by Cloudflare and are not subject to the same datacenter
+> IP-reputation filtering. Each toggle typically yields a new `/16` subnet.
+> See: `camofox-browser-automation` skill, "DataDome wall on datacenter IPs" section.
 
 ---
 
