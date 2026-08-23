@@ -1,0 +1,22 @@
+# Secrets / local data (NEVER commit)
+accounts.json
+apikeys.txt
+*.log
+action_id.json
+signup_body_dump.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+.venv
+
+# Debug tools (internal)
+extract_action.py
+extract_action2.py
+dump_body.py
+
+# OS
+.DS_Store
+Thumbs.db
