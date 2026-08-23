@@ -39,6 +39,7 @@ Usage:
   python tokenharbor_farmer.py 9router
 """
 import os
+import sys
 import re
 import json
 import time
@@ -59,6 +60,7 @@ ACTION_KEY = "kb59e6b88b9f36883e58e38e7e48870c6"
 NEXT_ACTION = "607ec2c1a962aa81ad67a2483c54b0cfadfda875b2"
 ROUTER = "[\"\",{\"children\":[\"login\",{\"children\":[\"__PAGE__\",{},null,null,0]},null,null,20]},null,null,20]"
 TEST_MODEL = "mimo-v2.5:free"
+FREE_MODELS = ["mimo-v2.5:free", "deepseek-v4-flash:free", "qwen3.8-27b:free"]
 
 # Dirs (configurable via env)
 WORKER_DIR = os.environ.get(
@@ -220,11 +222,11 @@ def inject_show_9router():
         return []
 
 # ===== TEST MODEL =====
-def test_free_model(api_key):
+def test_model(api_key, model=TEST_MODEL):
     try:
         r = requests.post(f"{BASE}/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=30, json={"model": TEST_MODEL, "messages": [{"role": "user", "content": "say ok"}], "max_tokens": 20})
+            timeout=30, json={"model": model, "messages": [{"role": "user", "content": "say ok"}], "max_tokens": 20})
         if r.status_code == 200:
             reply = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
             return True, f"200 OK - {reply[:30]}"
@@ -414,30 +416,79 @@ def save_key(key):
 
 # ===== COMMANDS =====
 def cmd_test_all():
+    """Test all keys x all free models. Display results as a table."""
     keys = load_keys()
     if not keys:
-        print("\n  No keys in apikeys.txt")
+        print("\n  Tidak ada key di apikeys.txt")
         return
-    print(f"\n  Testing {len(keys)} keys...")
-    ok = 0
+    col_w = 18
+    key_w = 15
+    header = f"  {'Key':<{key_w}}" + "".join(f"{m:<{col_w}}" for m in FREE_MODELS)
+    print(f"\n  Test semua key x semua model gratis:")
+    print(f"  {'—'*len(header)}")
+    print(header)
+    print(f"  {'—'*len(header)}")
+    totals = {m: 0 for m in FREE_MODELS}
     for i, k in enumerate(keys):
-        valid, info = test_free_model(k)
-        print(f"  {'OK' if valid else 'FAIL'} [{i+1}] {k[:35]}... -> {info}")
-        if valid:
-            ok += 1
-    print(f"\n  {ok}/{len(keys)} valid")
+        row = f"  {k[10:25]:<{key_w}}"
+        for m in FREE_MODELS:
+            valid, info = test_model(k, m)
+            tag = "OK" if valid else "FAIL"
+            row += f"{tag:<{col_w}}"
+            if valid:
+                totals[m] += 1
+        print(row)
+    print(f"  {'—'*len(header)}")
+    total_row = f"  {'TOTAL':<{key_w}}"
+    for m in FREE_MODELS:
+        total_row += f"{totals[m]}/{len(keys):<{col_w}}"
+    print(total_row)
+    print()
 
-def cmd_9router_list():
+def cmd_monitor():
+    """Health check pool tokenbor: jumlah key, model hidup, total jalur API."""
     rows = inject_show_9router()
-    print(f"\n  9router tokenbor entries: {len(rows)}")
+    keys = load_keys()
+    total_paths = 0
+    print(f"\n  ╔══════════════════════════════════════════════════╗")
+    print(f"  ║  TOKENHARBOR POOL — Health Check                ║")
+    print(f"  ╠══════════════════════════════════════════════════╣")
+    print(f"  ║  Akun di 9Router : {len(rows):>3}                          ║")
+    print(f"  ║  Key di file     : {len(keys):>3}                          ║")
+    print(f"  ╠══════════════════════════════════════════════════╣")
+    # List each 9Router entry
     for r in rows:
-        print(f"  {r[0][:8]} | {r[1]} | {r[2]} | active={r[3]}")
+        name, email, active = r[1], r[2], r[3]
+        status = "🟢 aktif" if active else "🔴 mati"
+        print(f"  ║  {status}  {name:<18} {email[:25]:<25} ║")
+    print(f"  ╠══════════════════════════════════════════════════╣")
+    # Model health (test first key only for speed)
+    print(f"  ║  Model Health (test key pertama)                ║")
+    if keys:
+        for m in FREE_MODELS:
+            valid, info = test_model(keys[0], m)
+            tag = "🟢 hidup" if valid else "🔴 mati"
+            paths = len(rows) if valid else 0
+            total_paths += paths
+            short = m.replace(":free", "")
+            print(f"  ║    {tag}  {short:<25} {paths:>2} jalur   ║")
+    else:
+        for m in FREE_MODELS:
+            print(f"  ║    ⚪ tanpa key   {m:<25}      ║")
+    print(f"  ╠══════════════════════════════════════════════════╣")
+    print(f"  ║  Total jalur API gratis : {total_paths:>3}                ║")
+    print(f"  ╚══════════════════════════════════════════════════╝")
+    # Warnings
+    if len(rows) != len(keys):
+        print(f"\n  ⚠️  9Router punya {len(rows)} entry tapi apikeys.txt punya {len(keys)} key.")
+        print(f"      Key baru belum ter-inject, atau ada key tanpa entry.")
+    print()
 
 def main():
     args = sys.argv[1:]
     if not args:
         print(__doc__)
-        print("\nUsage: python token_ru.py [batch N [--inject] | test | 9router]")
+        print("\nUsage: python tokenharbor_farmer.py [batch N [--inject] | test | monitor]")
     elif args[0] == "batch":
         n = int(args[1]) if len(args) > 1 else 5
         inject = "--inject" in args
@@ -445,8 +496,8 @@ def main():
         print(f"\n  Done: {ok}/{n}")
     elif args[0] == "test":
         cmd_test_all()
-    elif args[0] == "9router":
-        cmd_9router_list()
+    elif args[0] == "monitor":
+        cmd_monitor()
     else:
         print(f"Unknown command: {args[0]}")
         print(__doc__)
