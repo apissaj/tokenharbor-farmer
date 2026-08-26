@@ -24,7 +24,7 @@ NPX = os.environ.get("WRANGLER_BIN", r"C:\Users\TUF Gaming A15\AppData\Local\her
 NINE_DB = os.environ.get("NINEROUTER_DB", str(Path.home() / "AppData" / "Roaming" / "9router" / "db" / "data.sqlite"))
 _domains_env = os.environ.get("TOKENHARBOR_DOMAINS")
 DOMAINS = [d.strip() for d in _domains_env.split(",") if d.strip()] if _domains_env else [
-    "ternakakun.biz.id", "infrasync.web.id", "schemacanvas.my.id", "hafizhmuzani.my.id"
+    "azfa.biz.id", "ternakakun.biz.id", "infrasync.web.id", "schemacanvas.my.id", "hafizhmuzani.my.id"
 ]
 FREE_MODELS = ["mimo-v2.5:free", "deepseek-v4-flash:free", "qwen3.8-27b:free"]
 TEST_MODEL = "mimo-v2.5:free"
@@ -32,10 +32,49 @@ OTP_TIMEOUT, OTP_POLL = 120, 8
 ACCOUNT_DELAY = 90  # seconds between accounts
 RATELIMIT_DELAY = 600
 
-_email_counter = {"n": 0}
+# ===== European human-like name generator =====
+_EU_FIRST = [
+    # male
+    "lucas","liam","noah","mateo","leo","hugo","elias","adam","max","paul",
+    "luca","matteo","finn","jonas","lukas","timo","nico","felix","leon","finn",
+    "antoine","jules","thomas","pierre","louis","enzo","marco","diego","ivan","dmitri",
+    "anders","viktor","josefine","henrik","sebastian","oliver","emil","oscar","bruno","rene",
+    # female
+    "emma","mia","sofia","olivia","chloe","leah","nina","lena","anna","mara",
+    "elena","clara","lina","sara","ines","yara","noa","greta","elisabeth","victoria",
+    "camille","amelie","manon","louise","giulia","chiara","valeria","carla","isabel","marta",
+]
+_EU_LAST = [
+    "muller","schmidt","schneider","fischer","weber","meyer","wagner","becker","hoffmann","schulz",
+    "smith","jones","taylor","brown","wilson","davies","evans","thomas","johnson","walker",
+    "martin","bernard","dubois","thomas","robert","richard","petit","simon","michel","garcia",
+    "rossi","russo","ferrari","esposito","bianchi","romano","colombo","ricci","marino","greco",
+    "garcia","fernandez","lopez","martinez","sanchez","perez","gonzalez","romero","torres","diaz",
+    "jansen","de vries","van den berg","visser","bakker","smit","meijer","jacobs","willems","mulder",
+    "andersson","johansson","karlsson","nilsson","eriksson","larsson","olsson","persson","svensson","lindberg",
+    "kovalenko","novak","horvath","novak","svoboda","novotny","polak","kraus","fischer","weber",
+    "moreau","laurent","lefebvre","girard","bonnet","robin","faure","mercier","blanc","guerin",
+]
+_used_names = set()
+def gen_eu_name():
+    """Return a unique-ish 'firstname.lastname' slug with a small numeric suffix
+    (like real humans add when the base handle is taken)."""
+    for _ in range(200):
+        f = random.choice(_EU_FIRST)
+        l = random.choice(_EU_LAST).replace(" ", "")
+        slug = f"{f}.{l}"
+        if slug not in _used_names:
+            _used_names.add(slug)
+            return slug
+    # fallback: add counter
+    return f"{random.choice(_EU_FIRST)}.{random.choice(_EU_LAST).replace(' ','')}{random.randint(100,999)}"
+
 def gen_email(domain):
-    n = _email_counter["n"]; _email_counter["n"] += 1
-    return f"useraaa{n:03d}{random.randint(10,999)}@{domain}"
+    slug = gen_eu_name()
+    # 35% chance to append a 2-digit number, like a real person would
+    if random.random() < 0.35:
+        slug += str(random.randint(10, 99))
+    return f"{slug}@{domain}"
 def rand_pwd():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=12)) + '!Aa1'
 
@@ -76,12 +115,23 @@ def browser_signup_one(domain, user_id):
         page = ctx.new_page()
         Stealth().apply_stealth_sync(page)
 
-        # Capture Next-Action requests for debugging
-        captured = {"next_action": None, "response_text": None}
+        # Capture Next-Action requests + responses for debugging
+        captured = {"next_action": None, "submit_status": None, "submit_body": None, "submit_url": None}
         def on_request(req):
             na = req.headers.get("next-action")
-            if na: captured["next_action"] = na
+            if na:
+                captured["next_action"] = na
+                captured["submit_url"] = req.url
+        def on_response(resp):
+            # Capture signup Server Action response (Next-Action header present)
+            if resp.request.headers.get("next-action"):
+                try:
+                    captured["submit_status"] = resp.status
+                    captured["submit_body"] = resp.text()[:500]
+                except Exception:
+                    pass
         page.on("request", on_request)
+        page.on("response", on_response)
 
         # 1. Navigate
         log(f"[{user_id}] Navigating to signup page...")
@@ -165,13 +215,26 @@ def browser_signup_one(domain, user_id):
 
         page.wait_for_timeout(5000)
 
-        # 6. Check result
-        body = page.evaluate("() => document.body.innerText.slice(0,600)")
-        if "human check" in body.lower() or "429" in body:
-            log(f"[{user_id}] Still human check or rate-limited", "ERROR")
+        # 6. Check result — use REAL HTTP response status (not just "request sent")
+        submit_status = captured.get("submit_status")
+        submit_body = captured.get("submit_body") or ""
+        next_action = captured.get("next_action")
+        log(f"[{user_id}] Server Action response status: {submit_status} (action: {next_action})")
+
+        if submit_status is None:
+            # No Next-Action response captured — the click may have failed
+            body = page.evaluate("() => document.body.innerText.slice(0,600)")
+            log(f"[{user_id}] No Server Action response received. Page body: {body[:200]}", "ERROR")
+            browser.close()
+            return None, "no_server_response"
+        if submit_status not in (200, 303):
+            log(f"[{user_id}] Signup FAILED: HTTP {submit_status} — {submit_body[:200]}", "ERROR")
+            browser.close()
+            return None, f"http_{submit_status}"
+        if "human check" in submit_body.lower() or "429" in submit_body:
+            log(f"[{user_id}] Human check / rate-limited in response", "ERROR")
             browser.close()
             return None, "human_check"
-        log(f"[{user_id}] NEXT_ACTION: {captured['next_action']}")
 
         # 7. Verify email via D1
         log(f"[{user_id}] Waiting for verification email...")

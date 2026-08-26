@@ -1,5 +1,7 @@
 # Secrets / local data (NEVER commit)
 accounts.json
+accounts.json.bak
+*.bak
 apikeys.txt
 *.log
 action_id.json
@@ -16,6 +18,7 @@ env/
 extract_action.py
 extract_action2.py
 dump_body.py
+secret_scan.sh
 
 # OS
 .DS_Store
