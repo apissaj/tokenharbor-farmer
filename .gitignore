@@ -35,6 +35,7 @@ logs/
 add_proxy_to_farmer.py
 th_reset_login_harvest.py
 monitor.html
+secret_scan.sh
 
 # Python
 __pycache__/
