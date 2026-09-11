@@ -28,8 +28,7 @@ def main():
         if not email or not pw or not key:
             continue
         # skip if already ok
-        if acc.get("tests") and all(acc["tests"].get(m) for m in
-                                    ["deepseek-v4-flash:free", "mimo-v2.5:free", "qwen3.8-27b:free"]):
+        if acc.get("tests") and (acc["tests"].get("deepseek-v4-flash:free") and acc["tests"].get("mimo-v2.5:free")):
             print(f"[skip] {email} already tested")
             continue
         print(f"\n[*] processing {email}")
@@ -38,7 +37,7 @@ def main():
             print(f"[!] login failed for {email}")
             continue
         tests = {}
-        for m in ["deepseek-v4-flash:free", "mimo-v2.5:free", "qwen3.8-27b:free"]:
+        for m in ["deepseek-v4-flash:free", "mimo-v2.5:free"]:
             t = test_model(key, m)
             tests[m] = t.get("ok", False)
             if t.get("ok"):
@@ -46,7 +45,7 @@ def main():
         acc["verified"] = True
         acc["free_enabled"] = True
         acc["tests"] = tests
-        acc["ok"] = all(tests.values())
+        acc["ok"] = all(tests.values())  # NOTE: qwen3.8-27b:free dihapus vendor 2026-09
         # overwrite line: simplest is append new record + mark old
         log_account(acc)
         processed += 1

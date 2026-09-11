@@ -1,11 +1,40 @@
-# Secrets / local data (NEVER commit)
+# Secrets / credentials (NEVER commit)
 accounts.json
 accounts.json.bak
-*.bak
+accounts_all.json
+accounts_new.json
+accounts_credentials.txt
 apikeys.txt
+apikeys_new.txt
+*.bak
+fleet_final.csv
+fleet_success.csv
+
+# Temp / debug / dump files
 *.log
 action_id.json
 signup_body_dump.txt
+_d1_verify_dump.json
+_verify_links.json
+_verify_check.txt
+_deleted_91_audit.txt
+login_dump.html
+th_batch_results.json
+nul
+
+# Wrangler cache (local dev)
+.wrangler/
+
+# Backups
+backups/
+
+# Logs directory
+logs/
+
+# Local-only scripts (internal use, not repo core)
+add_proxy_to_farmer.py
+th_reset_login_harvest.py
+monitor.html
 
 # Python
 __pycache__/
@@ -13,12 +42,6 @@ __pycache__/
 .venv/
 env/
 .venv
-
-# Debug tools (internal)
-extract_action.py
-extract_action2.py
-dump_body.py
-secret_scan.sh
 
 # OS
 .DS_Store

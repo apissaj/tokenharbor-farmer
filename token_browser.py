@@ -352,8 +352,11 @@ def run_batch(n):
             success += 1
             ok, info = test_model(account["api_key"])
             log(f"Test {TEST_MODEL}: {'OK' if ok else 'FAIL'} {info}")
-            inj, msg = inject_9router(account["api_key"], account["email"])
-            log(f"Inject: {'OK' if inj else 'FAIL'} {msg}")
+            if account.get("verified"):
+                inj, msg = inject_9router(account["api_key"], account["email"])
+                log(f"Inject: {'OK' if inj else 'FAIL'} {msg}")
+            else:
+                log(f"SKIP inject (unverified): {account['email']}", "WARN")
         else:
             rate_limited += 1
             if err in ("human_check", "no_email"):

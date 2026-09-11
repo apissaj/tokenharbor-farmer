@@ -190,7 +190,7 @@ def inject_to_9router(api_key, email, user_id=""):
         now = datetime.now(timezone.utc).isoformat()
         label = f"{email.split('@')[0][:6]} #{count + 1}"
         data = json.dumps({
-            "defaultModel": "mimo-v2.5:free",
+            "defaultModel": "deepseek-v4-flash:free",
             "apiKey": api_key,
             "testStatus": "active",
             "providerSpecificData": {
@@ -354,9 +354,11 @@ def run_batch(n, inject=False):
                     t = "Y" if ok else "N"
                     print(f"  RESULT: {account['email']} [verify:{v}] [consent:{c}] [model:{t}]")
 
-                    if inject:
+                    if inject and account.get("verified"):
                         injected, msg = inject_to_9router(account["api_key"], account["email"], account.get("userId", ""))
                         log(f"{'Injected' if injected else 'Inject failed'}: {msg}")
+                    elif inject:
+                        log(f"SKIP inject (unverified): {account['email']}", "WARN")
 
                     save_accounts(accounts)
                     break
