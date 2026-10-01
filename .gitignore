@@ -47,3 +47,8 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Cleanup / retest artifacts (contain plaintext API keys)
+cleanup/
+*.jsonl
+*.bak_*
